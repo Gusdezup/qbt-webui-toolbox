@@ -44,7 +44,7 @@ Ajoute ce service au `docker-compose.yml` qui contient qBittorrent (voir [`docke
 
 ```yaml
   mediainfo-api:
-    image: ghcr.io/Gusdezup/qbt-mediainfo-api:latest
+    image: ghcr.io/gusdezup/qbt-mediainfo-api:latest
     container_name: mediainfo-api
     user: "1000:1000"            # mêmes PUID/PGID que qBittorrent
     environment:
