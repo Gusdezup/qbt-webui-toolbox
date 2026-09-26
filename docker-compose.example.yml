@@ -1,0 +1,16 @@
+# Service à ajouter dans le docker-compose.yml qui contient déjà qBittorrent.
+services:
+  mediainfo-api:
+    image: ghcr.io/Gusdezup/qbt-mediainfo-api:latest
+    container_name: mediainfo-api
+    # Mêmes PUID/PGID que ton conteneur qBittorrent : le sidecar lit ce que qBittorrent peut lire.
+    user: "1000:1000"
+    environment:
+      - ALLOWED_ROOT=/media
+    volumes:
+      # IMPORTANT : même chemin DANS le conteneur que côté qBittorrent (ici /media).
+      # Le script envoie les chemins tels que qBittorrent les voit.
+      - /chemin/vers/tes/medias:/media:ro
+    ports:
+      - "8765:8765"
+    restart: unless-stopped
