@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         qBittorrent WebUI — Créateur de torrent, MediaInfo, éditeur de trackers
 // @namespace    qbt-webui-toolbox
-// @version      12.1
+// @version      12.2
 // @homepageURL  https://github.com/Gusdezup/qbt-webui-toolbox
 // @supportURL   https://github.com/Gusdezup/qbt-webui-toolbox/issues
 // @downloadURL  https://raw.githubusercontent.com/Gusdezup/qbt-webui-toolbox/main/qbt-webui-toolbox.user.js
@@ -361,6 +361,12 @@
     });
   }
 
+  // Ne garde que le nom du fichier (sans le chemin conteneur) sur la ligne "Complete name",
+  // pour pouvoir coller/joindre le MediaInfo tel quel. L'alignement des colonnes est conservé.
+  function stripCompleteNamePath(text) {
+    return text.replace(/^((?:Complete name|Nom complet)\s*:\s*).*\/(?=[^\/\n]*$)/gm, '$1');
+  }
+
   async function runMediaInfo(path) {
     const modal = showTextModal('Analyse en cours…', path);
     const api = getMediaInfoApi();
@@ -370,7 +376,7 @@
     }
     try {
       const text = await gmGet(api + '/mediainfo?path=' + encodeURIComponent(path));
-      modal.querySelector('pre').textContent = text;
+      modal.querySelector('pre').textContent = stripCompleteNamePath(text);
     } catch (e) {
       modal.querySelector('pre').textContent = 'Erreur: ' + e.message;
     }
@@ -489,19 +495,10 @@
 
   // ---------- Éditeur de tracker en masse ----------
 
-  // Construit la table {url tracker -> [{hash, name}, ...]}.
-  // - Avec une sélection (hashes fourni) : interroge le vrai détail des trackers de chaque
-  //   torrent sélectionné (fiable, coût faible vu que la sélection est petite).
-  // - Sans sélection (hashes null) : parcourt toute la bibliothèque via UN seul appel
-  //   torrents/info et se base sur son champ "tracker" (premier tracker actif) plutôt que
-  //   d'interroger le détail de potentiellement 1000+ torrents un par un. Marqué "approximatif"
-  //   (exact:false) : re-vérifié individuellement juste avant chaque remplacement effectif.
-  // Scan systématique des vrais trackers de chaque torrent ciblé (en parallèle, par lots) —
-  // pas de raccourci basé sur le champ "tracker" de torrents/info (celui-ci ne donne que le
-  // PREMIER tracker actuellement actif, donc rate tout torrent où le tracker cherché est
-  // secondaire ou momentanément en erreur : constaté en pratique, pas juste théorique).
   // Construit la table {url tracker -> [{hash, name}, ...]} à partir de TOUS les trackers de
-  // chaque torrent (pas seulement le premier actif).
+  // chaque torrent (pas seulement le premier actif — le champ "tracker" de torrents/info ne
+  // donne que le PREMIER tracker actuellement actif, donc rate tout torrent où le tracker
+  // cherché est secondaire ou momentanément en erreur : constaté en pratique).
   // Méthode principale : UN seul appel torrents/info?includeTrackers=true (qBittorrent 5.1+),
   // qui renvoie la liste complète des trackers de chaque torrent dans un champ "trackers".
   // Repli si le champ est absent (qBittorrent plus ancien) : un appel torrents/trackers par torrent.
