@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         qBittorrent WebUI — Créateur de torrent, MediaInfo, éditeur de trackers
 // @namespace    qbt-webui-toolbox
-// @version      12.2
+// @version      12.3
 // @homepageURL  https://github.com/Gusdezup/qbt-webui-toolbox
 // @supportURL   https://github.com/Gusdezup/qbt-webui-toolbox/issues
 // @downloadURL  https://raw.githubusercontent.com/Gusdezup/qbt-webui-toolbox/main/qbt-webui-toolbox.user.js
@@ -777,14 +777,16 @@
         </div>
       </div>`;
     document.body.appendChild(overlay);
-    let activeTaskID = null;
+    // Toutes les tâches lancées depuis cette fenêtre (on peut enchaîner plusieurs créations).
+    const dialogTaskIDs = new Set();
     function closeDialog() {
-      if (activeTaskID) {
-        // "Fermer" doit vraiment annuler côté serveur, pas juste cacher la fenêtre — sinon la
-        // tâche continue de tourner en arrière-plan et bloque le slot de création unique de
-        // qBittorrent pour la prochaine fois.
+      for (const taskID of dialogTaskIDs) {
+        // "Fermer" supprime toujours la tâche côté serveur : si elle tourne encore, ça l'annule
+        // (sinon elle bloque le slot de création unique) ; si elle est terminée, ça libère la
+        // tâche et son .torrent temporaire, qui sinon s'accumulent jusqu'au redémarrage de
+        // qBittorrent. Le torrent déjà ajouté en seed n'est pas affecté.
         apiFetch('torrentcreator/deleteTask', {
-          method: 'POST', body: new URLSearchParams({ taskID: activeTaskID }),
+          method: 'POST', body: new URLSearchParams({ taskID }),
         }).catch(() => {});
       }
       overlay.remove();
@@ -972,11 +974,11 @@
         const res = await apiFetch('torrentcreator/addTask', { method: 'POST', body });
         const data = await res.json();
         const taskID = data.taskID || data.taskId;
-        activeTaskID = taskID;
+        dialogTaskIDs.add(taskID);
         const isDirHint = sourceInput.dataset.isDir === '' || sourceInput.dataset.isDir === undefined
           ? undefined : (sourceInput.dataset.isDir === '1');
         await pollStatus(taskID, status, sourcePath, isDirHint);
-        activeTaskID = null; // terminé (Finished/Failed) : plus besoin de l'annuler à la fermeture
+        // La tâche reste dans dialogTaskIDs : closeDialog() la supprimera à la fermeture.
       } catch (e) {
         status.textContent = 'Erreur: ' + e.message;
       }
@@ -994,8 +996,12 @@
 
   async function pollStatus(taskID, status, sourcePath, isDirHint) {
     const startedAt = Date.now();
-    for (let i = 0; i < 300; i++) {
+    // Pas de limite de durée : on suit la tâche tant que la fenêtre est ouverte. Un gros dossier
+    // sur HDD peut dépasser largement 5 min (hachage mono-thread côté libtorrent). Fermer la
+    // fenêtre annule la tâche côté serveur (closeDialog → deleteTask), donc la boucle s'arrête.
+    while (status.isConnected) {
       await new Promise(r => setTimeout(r, 1000));
+      if (!status.isConnected) return;
       const res = await apiFetch('torrentcreator/status?taskID=' + encodeURIComponent(taskID));
       const list = await res.json();
       const info = Array.isArray(list) ? list[0] : list;
@@ -1053,7 +1059,6 @@
         return;
       }
     }
-    status.textContent = 'Timeout, vérifie manuellement (peut rester "Running" longtemps sur gros dossiers).';
   }
 
   // Icône "fichier + plus" (style lucide), en data-URI pour un <img class="mochaToolButton"> natif
